@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- ============================================================
+       META & PAGE SETUP
+       - charset: ensures correct text encoding (handles special chars)
+       - viewport: makes the layout responsive on phones/tablets
+       - description: used by search engines and social sharing
+  ============================================================ -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Explore key Bible locations on an interactive map with AI-generated devotional explanations and Bible stories." />
+  <title>AI Bible Map — Explore Sacred Places</title>
+
+  <!-- ============================================================
+       GOOGLE FONTS (loaded from CDN — works online)
+       - Cinzel: elegant serif with an ancient / classical feel
+       - Lato: clean, readable sans-serif for body text
+  ============================================================ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
+
+  <!-- ============================================================
+       LEAFLET MAP CSS (from CDN)
+       Leaflet is the open-source JavaScript library for interactive
+       maps. This CSS file styles the map, popups, zoom controls etc.
+  ============================================================ -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+  <!-- ===========================================================
+       ALL CUSTOM CSS — STYLE.CSS (inlined for portability)
+       Inlining styles means the file works when opened directly
+       in a browser or VS Code without needing a web server.
+  ============================================================ -->
+  <style>
+    /* ================================================================
+       CSS CUSTOM PROPERTIES (DESIGN TOKENS)
+       Think of these as named variables for colors, fonts, spacing.
+       Change a value here and it updates everywhere it's used.
+    ================================================================ */
+    :root {
+      --color-primary:       #8B6914;   /* warm gold — ancient/sacred feel   */
+      --color-primary-light: #C9A84C;   /* lighter gold for hover states      */
+      --color-accent:        #2C5F8A;   /* deep blue — sky and water          */
+
+      --color-bg:            #F8F4ED;   /* warm parchment white               */
+      --color-bg-secondary:  #EDE6D9;   /* slightly darker parchment          */
+      --color-surface:       #FFFFFF;   /* card / panel backgrounds           */
+      --color-surface-alt:   #F5F0E8;   /* alternate surface (verse box)      */
+
+      --color-text-primary:  #1A1208;   /* near-black for main text           */
+      --color-text-secondary:#5C4A25;   /* warm brown for secondary text      */
+      --color-text-muted:    #8C7A5A;   /* muted brown for labels/hints       */
+
+      --color-border:        #D9CDB8;   /* soft warm border                   */
+      --color-border-accent: #C9A84C;   /* golden border for highlights       */
+
+      /* Rich gradient across the header (sky meets desert) */
+      --header-gradient: linear-gradient(135deg, #1A3A5C 0%, #2C5F8A 40%, #8B6914 100%);
+
+      --shadow-panel:  0 4px 24px rgba(139, 105, 20, 0.15);
+      --shadow-card:   0 2px 12px rgba(0, 0, 0, 0.08);
+      --shadow-marker: 0 4px 12px rgba(44, 95, 138, 0.4);
+
+      --font-heading: 'Cinzel', Georgia, serif;
+      --font-body:    'Lato', 'Helvetica Neue', Arial, sans-serif;
+
+      --panel-width:   380px;   /* width of the right info panel            */
+      --header-height: 64px;   /* height of the sticky top header           */
+      --search-height: 52px;   /* height of the search bar area             */
+
+      --transition-fast:   0.2s ease;
+      --transition-normal: 0.35s ease;
+    }
+
+    /* ================================================================
+       DARK MODE VARIABLES
+       When .dark-mode is added to <body> by JavaScript, these
+       values override the light mode ones above.
+    ================================================================ */
+    body.dark-mode {
+      --color-bg:            #0D1117;
+      --color-bg-secondary:  #161B22;
+      --color-surface:       #1F2937;
+      --color-surface-alt:   #273444;
+      --color-text-primary:  #E8DEC8;
+      --color-text-secondary:#C9A84C;
+      --color-text-muted:    #8C9AB5;
+      --color-border:        #2D3748;
+      --color-border-accent: #C9A84C;
+      --shadow-panel:  0 4px 24px rgba(0, 0, 0, 0.5);
+      --shadow-card:   0 2px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    /* ================================================================
+       RESET & BASE STYLES
+       Removes default browser inconsistencies so our design is
+       consistent across Chrome, Firefox, Safari, and Edge.
+    ================================================================ */
+    *, *::before, *::after {
+      box-sizing: border-box;   /* padding/border included in width/height  */
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font-body);
+      background-color: var(--color-bg);
+      color: var(--color-text-primary);
+      overflow-x: hidden;
+      transition: background-color var(--transition-normal),
+                  color var(--transition-normal);
+    }
+
+    ul, ol { list-style: none; }
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; border: none; background: none; font-family: var(--font-body); }
+
+    /* ================================================================
+       HEADER
+       Fixed to the top of the screen. Uses a gradient background
+       that evokes ancient skies and desert landscapes.
+    ================================================================ */
+    .app-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      height: var(--header-height);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--header-gradient);
+      box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Decorative star icon — glows with a pulsing animation */
+    .header-icon {
+      font-size: 22px;
+      color: #F0C040;
+      text-shadow: 0 0 8px rgba(240,192,64,0.8);
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+
+    .header-title {
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 700;
+      color: #F8F4ED;
+      letter-spacing: 1.5px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* ================================================================
+       SEARCH BAR
+       A pill-shaped input that filters Bible locations.
+       The dropdown results appear below it.
+    ================================================================ */
+    .search-container {
+      position: fixed;
+      top: var(--header-height);
+      left: 0;
+      right: 0;
+      z-index: 900;
+      padding: 10px 24px;
+      /* gradient fades from the header color down to transparent */
+      background: linear-gradient(to bottom, rgba(26,58,92,0.95) 0%, rgba(26,58,92,0) 100%);
+    }
+
+    .search-wrapper {
+      position: relative;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* Magnifying glass icon inside the input */
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 16px;
+      pointer-events: none;   /* click passes through to the input */
+      z-index: 1;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 11px 16px 11px 44px;   /* left padding leaves room for the icon */
+      border: 2px solid rgba(201,168,76,0.4);
+      border-radius: 32px;
+      background: rgba(255,255,255,0.93);
+      color: var(--color-text-primary);
+      font-size: 14px;
+      font-family: var(--font-body);
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+
+    .search-input:focus {
+      border-color: var(--color-primary-light);
+      box-shadow: 0 2px 16px rgba(201,168,76,0.5);
+    }
+
+    body.dark-mode .search-input {
+      background: rgba(31,41,55,0.95);
+      color: var(--color-text-primary);
+      border-color: rgba(201,168,76,0.3);
+    }
+
+    /* Dropdown list of search results */
+    .search-results {
+      display: none;   /* hidden by default; JavaScript shows it when needed */
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-panel);
+      z-index: 1000;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .search-results li {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--color-border);
+      transition: background-color var(--transition-fast);
+    }
+
+    .search-results li:last-child { border-bottom: none; }
+    .search-results li:hover { background-color: var(--color-bg-secondary); }
+    .search-results .result-icon { font-size: 18px; }
+    .search-results .result-name { font-weight: 600; color: var(--color-text-primary); }
+    .search-results .result-sub  { font-size: 12px; color: var(--color-text-muted); margin-top: 1px; }
+
+    /* ================================================================
+       MAIN LAYOUT
+       The map fills the left side; the info panel slides in from the right.
+    ================================================================ */
+    .main-content {
+      display: flex;
+      position: fixed;
+      top: calc(var(--header-height) + var(--search-height));
+      bottom: 32px;
+      left: 0;
+      right: 0;
+      overflow: hidden;
+    }
+
+    /* ================================================================
+       LEAFLET MAP
+       Takes up all space not occupied by the info panel.
+    ================================================================ */
+    #map {
+      flex: 1;
+      height: 100%;
+      z-index: 1;
+      background: #c8d8e8;   /* fallback color while tiles load */
+    }
+
+    /* ================================================================
+       CUSTOM ANIMATED MARKER
+       Each Bible location uses a teardrop pin that gently floats,
+       with a ripple ring expanding from its base.
+    ================================================================ */
+    .bible-marker-container {
+      position: relative;
+      width: 40px;
+      height: 50px;
+    }
+
+    /* Teardrop shape: rotated square with half-rounded corners */
+    .bible-marker-pin {
+      width: 32px;
+      height: 32px;
+      border-radius: 50% 50% 50% 0;   /* creates the teardrop shape */
+      transform: rotate(-45deg);
+      position: absolute;
+      top: 0;
+      left: 4px;
+      box-shadow: var(--shadow-marker);
+      animation: marker-float 3s ease-in-out infinite;   /* floating effect */
+    }
+
+    /* Small white dot in the center of each pin */
+    .bible-marker-dot {
+      width: 10px;
+      height: 10px;
+      background: rgba(255,255,255,0.9);
+      border-radius: 50%;
+      position: absolute;
+      top: 11px;
+      left: 11px;
+    }
+
+    /* Expanding ring that pulses outward from the pin's base */
+    .bible-marker-pulse {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      position: absolute;
+      top: 20px;
+      left: 2px;
+      opacity: 0;
+      animation: marker-pulse 2.5s ease-out infinite;
+    }
+
+    /* Leaflet popup overrides — make them match our design */
+    .leaflet-popup-content-wrapper {
+      border-radius: 12px !important;
+      box-shadow: var(--shadow-panel) !important;
+      border: 2px solid var(--color-border-accent) !important;
+      padding: 0 !important;
+      overflow: hidden;
+    }
+    .leaflet-popup-content {
+      margin: 0 !important;
+      padding: 16px !important;
+      min-width: 220px;
+    }
+    .popup-title { font-family: var(--font-heading); font-size: 15px; font-weight: 600; color: var(--color-primary); margin-bottom: 4px; }
+    .popup-sub   { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px; }
+    .popup-hint  { font-size: 11px; color: var(--color-text-muted); font-style: italic; }
+    body.dark-mode .leaflet-popup-content-wrapper { background: var(--color-surface) !important; color: var(--color-text-primary) !important; }
+
+    /* ================================================================
+       INFO PANEL (RIGHT SIDEBAR)
+       Starts at width 0 (hidden). JavaScript adds .panel-open to
+       expand it. CSS transition creates the sliding animation.
+    ================================================================ */
+    .info-panel {
+      width: 0;
+      height: 100%;
+      background: var(--color-surface);
+      border-left: 1px solid var(--color-border);
+      overflow: hidden;
+      transition: width var(--transition-normal);
+      box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+
+    .info-panel.panel-open {
+      width: var(--panel-width);
+      overflow-y: auto;
+    }
+
+    /* Default placeholder (visible before any marker is clicked) */
+    .default-message {
+      padding: 40px 28px;
+      text-align: center;
+      color: var(--color-text-muted);
+      width: var(--panel-width);
+    }
+
+    .default-icon {
+      font-size: 52px;
+      margin-bottom: 16px;
+      animation: float 4s ease-in-out infinite;
+    }
+
+    .default-message h2 { font-family: var(--font-heading); font-size: 20px; color: var(--color-text-secondary); margin-bottom: 10px; }
+    .default-message p  { font-size: 14px; line-height: 1.6; color: var(--color-text-muted); }
+
+    .hint-arrows { margin-top: 24px; font-size: 13px; color: var(--color-primary-light); animation: pulse-hint 2s ease-in-out infinite; }
+
+    /* Helper: completely hides an element (JavaScript uses this) */
+    .hidden { display: none !important; }
+
+    /* ================================================================
+       LOCATION CARD (inside the info panel)
+    ================================================================ */
+    .location-card {
+      width: var(--panel-width);
+      padding: 0 0 24px 0;
+      animation: slide-up 0.3s ease;
+    }
+
+    /* Gradient header strip with location icon + name + close button */
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 20px 20px 16px;
+      background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-primary) 100%);
+      color: white;
+    }
+
+    .card-title-group { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .location-icon    { font-size: 28px; line-height: 1; }
+    .location-name    { font-family: var(--font-heading); font-size: 20px; font-weight: 700; color: white; line-height: 1.2; }
+
+    /* ✕ Close button */
+    .close-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background-color var(--transition-fast);
+    }
+    .close-btn:hover { background: rgba(255,255,255,0.35); }
+
+    /* Each "block" inside the card */
+    .card-section {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .card-section:last-of-type { border-bottom: none; }
+
+    /* Small uppercase label above each section */
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--color-text-muted);
+      margin-bottom: 8px;
+    }
+
+    .location-story { font-size: 14px; line-height: 1.7; color: var(--color-text-primary); }
+
+    /* ================================================================
+       VERSE BOX
+    ================================================================ */
+    .verse-box { background: var(--color-surface-alt); }
+
+    /* Italic quote with a left golden border */
+    .verse-text {
+      font-size: 14px;
+      font-style: italic;
+      line-height: 1.7;
+      color: var(--color-text-primary);
+      border-left: 4px solid var(--color-primary-light);
+      padding-left: 12px;
+      margin-bottom: 6px;
+    }
+
+    .verse-ref { font-size: 12px; font-weight: 700; color: var(--color-primary); text-align: right; }
+
+    /* Expandable extra verses (uses the HTML <details> element) */
+    .extra-verses { border-bottom: 1px solid var(--color-border); }
+
+    .extra-verses-summary {
+      padding: 12px 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+      transition: color var(--transition-fast);
+    }
+    .extra-verses-summary:hover { color: var(--color-primary); }
+    .extra-verses-summary::before { content: "▶ "; font-size: 10px; display: inline-block; transition: transform var(--transition-fast); }
+    details[open] .extra-verses-summary::before { transform: rotate(90deg); }
+
+    .extra-verses-list { padding: 0 20px 16px; }
+    .extra-verses-list li { font-size: 13px; color: var(--color-text-secondary); padding: 4px 0; border-bottom: 1px solid var(--color-border); display: flex; gap: 8px; }
+    .extra-verses-list li:last-child { border-bottom: none; }
+    .extra-verses-list .ev-ref { font-weight: 700; color: var(--color-primary); min-width: 100px; flex-shrink: 0; }
+
+    /* ================================================================
+       AI DEVOTIONAL SECTION
+    ================================================================ */
+    .ai-section { background: linear-gradient(135deg, rgba(44,95,138,0.04), rgba(139,105,20,0.04)); }
+
+    /* Spinner + "Generating..." text */
+    .ai-loading { display: flex; align-items: center; gap: 10px; color: var(--color-text-muted); font-size: 13px; }
+
+    /* Pure CSS rotating spinner circle */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--color-border);
+      border-top-color: var(--color-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* AI-generated explanation text */
+    .ai-text { font-size: 14px; line-height: 1.75; color: var(--color-text-primary); animation: fade-in 0.5s ease; }
+
+    /* ================================================================
+       QUICK TIP SECTION
+    ================================================================ */
+    .tip-section { background: var(--color-bg-secondary); }
+
+    .quick-tip-text { font-size: 14px; line-height: 1.6; color: var(--color-text-secondary); font-style: italic; margin-bottom: 10px; }
+
+    .new-tip-btn {
+      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 16px;
+      border: 1.5px solid var(--color-primary-light);
+      color: var(--color-primary);
+      background: transparent;
+      font-weight: 600;
+      transition: background-color var(--transition-fast), color var(--transition-fast);
+    }
+    .new-tip-btn:hover { background: var(--color-primary); color: white; }
+
+    /* ================================================================
+       DARK MODE BUTTON (in the header)
+    ================================================================ */
+    .dark-mode-btn {
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1.5px solid rgba(255,255,255,0.3);
+      color: white;
+      background: rgba(255,255,255,0.1);
+      font-size: 13px;
+      font-weight: 600;
+      transition: background-color var(--transition-fast), border-color var(--transition-fast);
+      backdrop-filter: blur(4px);
+    }
+    .dark-mode-btn:hover { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.5); }
+    body.dark-mode .dark-mode-btn { background: rgba(201,168,76,0.2); border-color: rgba(201,168,76,0.5); }
+
+    /* ================================================================
+       FOOTER
+    ================================================================ */
+    .app-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 32px;
+      background: rgba(26,58,92,0.9);
+      color: rgba(248,244,237,0.7);
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+      z-index: 800;
+    }
+
+    /* ================================================================
+       ANIMATIONS & KEYFRAMES
+    ================================================================ */
+
+    /* Pin gently bobs up and down (note: pin is rotated -45deg, so
+       translateY moves it diagonally — we translate before rotate) */
+    @keyframes marker-float {
+      0%, 100% { transform: rotate(-45deg) translateY(0);    }
+      50%       { transform: rotate(-45deg) translateY(-4px); }
+    }
+
+    /* Ripple ring expands from the pin base and fades out */
+    @keyframes marker-pulse {
+      0%   { transform: scale(0.5); opacity: 0.7; }
+      100% { transform: scale(1.8); opacity: 0;   }
+    }
+
+    /* Star icon in header breathes with golden glow */
+    @keyframes pulse-glow {
+      0%, 100% { text-shadow: 0 0 6px rgba(240,192,64,0.6); }
+      50%       { text-shadow: 0 0 18px rgba(240,192,64,1.0), 0 0 32px rgba(240,192,64,0.4); }
+    }
+
+    /* "← Click a marker" hint pulses opacity */
+    @keyframes pulse-hint {
+      0%, 100% { opacity: 0.6; }
+      50%       { opacity: 1.0; }
+    }
+
+    /* Loading spinner rotates */
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Card entrance: fade in and drift upward */
+    @keyframes slide-up {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+
+    /* AI text and quick tip fade in */
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* Default message icon floats */
+    @keyframes float {
+      0%, 100% { transform: translateY(0);    }
+      50%       { transform: translateY(-8px); }
+    }
+
+    /* ================================================================
+       RESPONSIVE — MOBILE DEVICES
+       On small screens the panel stacks below the map.
+    ================================================================ */
+    @media (max-width: 768px) {
+      .main-content  { flex-direction: column; bottom: 32px; }
+      #map           { flex: none; height: 55vh; width: 100%; }
+      .info-panel    { width: 100% !important; height: 0; border-left: none; border-top: 1px solid var(--color-border); box-shadow: 0 -4px 20px rgba(0,0,0,0.15); overflow: hidden; transition: height var(--transition-normal); }
+      .info-panel.panel-open { height: 45vh; width: 100% !important; overflow-y: auto; }
+      .location-card, .default-message { width: 100%; }
+      .header-title  { font-size: 17px; }
+      .search-container { padding: 8px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       HEADER
+       Contains the glowing star, app title, and dark mode toggle.
+  ============================================================ -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="header-icon">✦</span>
+      <h1 class="header-title">AI Bible Map</h1>
+    </div>
+    <div class="header-right">
+      <!-- Dark mode toggle — JavaScript listens for clicks on this -->
+      <button id="darkModeToggle" class="dark-mode-btn" aria-label="Toggle dark mode">
+        🌙 Dark Mode
+      </button>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       SEARCH BAR
+       The user types a location name; JavaScript filters the list
+       and shows matching locations in the dropdown below.
+  ============================================================ -->
+  <div class="search-container">
+    <div class="search-wrapper">
+      <span class="search-icon">🔍</span>
+      <input
+        type="search"
+        id="searchInput"
+        class="search-input"
+        placeholder="Search Bible locations... (e.g. Jerusalem, Nazareth)"
+        autocomplete="off"
+        aria-label="Search Bible locations"
+      />
+      <!-- Dropdown list — hidden by default, shown by JavaScript -->
+      <ul id="searchResults" class="search-results" role="listbox"></ul>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MAIN CONTENT AREA
+       The map sits on the left; the info panel slides in on the right.
+  ============================================================ -->
+  <main class="main-content">
+
+    <!-- Leaflet attaches the interactive map here -->
+    <div id="map" role="application" aria-label="Interactive Bible Map"></div>
+
+    <!-- ============================================================
+         INFO PANEL (right sidebar)
+         Hidden by default. Slides open when a marker is clicked.
+    ============================================================ -->
+    <aside id="infoPanel" class="info-panel" aria-live="polite">
+
+      <!-- Shown before any marker is clicked -->
+      <div id="defaultMessage" class="default-message">
+        <div class="default-icon">🗺️</div>
+        <h2>Explore Sacred Places</h2>
+        <p>Click any marker on the map to discover the Bible story and an AI-generated devotional for that location.</p>
+        <div class="hint-arrows">← Click a marker to begin</div>
+      </div>
+
+      <!-- Location detail card — filled in and shown by JavaScript -->
+      <div id="locationCard" class="location-card hidden">
+
+        <div class="card-header">
+          <div class="card-title-group">
+            <span id="locationIcon" class="location-icon"></span>
+            <h2 id="locationName" class="location-name"></h2>
+          </div>
+          <button id="closePanel" class="close-btn" aria-label="Close location details">✕</button>
+        </div>
+
+        <!-- Bible story for this location -->
+        <div class="card-section">
+          <h3 class="section-label">📖 Bible Story</h3>
+          <p id="locationStory" class="location-story"></p>
+        </div>
+
+        <!-- Main key verse -->
+        <div class="card-section verse-box">
+          <h3 class="section-label">📜 Key Verse</h3>
+          <blockquote id="locationVerse" class="verse-text"></blockquote>
+          <p id="locationVerseRef" class="verse-ref"></p>
+        </div>
+
+        <!-- Extra verses (hidden inside a <details> accordion) -->
+        <details class="extra-verses">
+          <summary class="extra-verses-summary">📚 More Verses</summary>
+          <ul id="extraVerses" class="extra-verses-list"></ul>
+        </details>
+
+        <!-- AI devotional — shows a spinner, then the explanation text -->
+        <div class="card-section ai-section">
+          <h3 class="section-label">✨ AI Devotional</h3>
+          <div id="aiLoading" class="ai-loading hidden">
+            <div class="spinner"></div>
+            <span>Generating devotional...</span>
+          </div>
+          <p id="aiExplanation" class="ai-text"></p>
+        </div>
+
+        <!-- Quick tip with a "New Tip" button -->
+        <div class="card-section tip-section">
+          <h3 class="section-label">💡 Quick Tip</h3>
+          <p id="quickTip" class="quick-tip-text"></p>
+          <button id="newTipBtn" class="new-tip-btn">New Tip ↻</button>
+        </div>
+
+      </div><!-- /location-card -->
+    </aside>
+
+  </main><!-- /main-content -->
+
+  <!-- ============================================================
+       FOOTER
+  ============================================================ -->
+  <footer class="app-footer">
+    <p>AI Bible Map &mdash; Explore sacred places of Scripture</p>
+  </footer>
+
+  <!-- ============================================================
+       LEAFLET JAVASCRIPT (from CDN)
+       Must be loaded BEFORE our script so that the global L object
+       (which Leaflet creates) is available when our code runs.
+  ============================================================ -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- ===========================================================
+       ALL CUSTOM JAVASCRIPT — SCRIPT.JS (inlined for portability)
+       Inlining means this file works when opened directly in a
+       browser or VS Code without needing a web server.
+  ============================================================ -->
+  <script>
+    /* ================================================================
+       1. BIBLE LOCATIONS DATA
+       ----------------------------------------------------------------
+       Each object in LOCATIONS represents one place on the map.
+       Properties:
+         name        — display name shown in the card and search results
+         lat / lng   — geographic coordinates (latitude / longitude)
+         icon        — emoji for the marker popup and card header
+         color       — pin color (CSS string)
+         pulseColor  — ripple ring color (rgba with transparency)
+         story       — short paragraph about the biblical event here
+         verse       — the key Bible verse text
+         verseRef    — the citation (book, chapter, verse, translation)
+         extraVerses — array of {ref, text} for the expandable section
+         aiExplanations — array of devotional paragraphs; one is chosen
+                          at random each time to simulate AI generation
+         quickTips   — array of short encouragements; rotated on demand
+    ================================================================ */
+    const LOCATIONS = [
+
+      /* -------- JERUSALEM -------- */
+      {
+        name: "Jerusalem",
+        lat: 31.7683, lng: 35.2137,
+        icon: "🏛️",
+        color: "#C0392B",
+        pulseColor: "rgba(192,57,43,0.35)",
+        story: "Jerusalem is the city of God — where King David established his throne, where Solomon built the Temple, and most importantly, where Jesus was crucified, buried, and rose from the dead. It is the spiritual center of the entire Bible.",
+        verse: "\"Jerusalem, built as a city that is closely compacted together. That is where the tribes go up — the tribes of the LORD — to praise the name of the LORD.\"",
+        verseRef: "Psalm 122:3–4 (NIV)",
+        extraVerses: [
+          { ref: "Matthew 21:1–11",  text: "Jesus' triumphal entry into Jerusalem — the crowds lay palm branches before Him." },
+          { ref: "Luke 23:33",       text: "Jesus is crucified at Golgotha, just outside the city walls." },
+          { ref: "Acts 2:1–4",       text: "The Holy Spirit descends on the disciples in Jerusalem on Pentecost." },
+          { ref: "Revelation 21:2",  text: "A vision of the New Jerusalem descending from heaven — the eternal city of God." },
+        ],
+        aiExplanations: [
+          "Jerusalem is not just a city on a map — it is the story of God pursuing humanity. Every stone speaks of covenants made and kept. The cross here was the ultimate act of love, paying a debt none of us could pay. Jerusalem teaches us that God never gives up on His people. Just as He chose Jerusalem as the place where salvation was accomplished, He has chosen you as someone He deeply loves and desires to be close to.",
+          "There is something deeply moving about Jerusalem. Prophets wept over her. Kings ruled from her. And the Son of God shed His blood within her walls. The resurrection of Jesus in Jerusalem changed everything: death is not the end. Every time you feel overwhelmed, remember — if God could conquer death in Jerusalem, He can certainly handle whatever you are facing today.",
+          "Jerusalem holds a mirror to the human soul. It has been destroyed and rebuilt, abandoned and restored — much like our own hearts. God's faithfulness to Jerusalem through centuries of turmoil reminds us He is equally faithful in our struggles. His love for Jerusalem was not based on her perfection, but on His promise. His love for you works the same way. God keeps His promises, restores broken things, and never abandons what He loves.",
+        ],
+        quickTips: [
+          "God chose Jerusalem not because it was perfect, but because He chose it. He has chosen you too.",
+          "The same God who raised Jesus in Jerusalem is alive and at work in your life right now.",
+          "When you feel broken like the ancient walls, remember: God specializes in rebuilding.",
+          "Jerusalem reminds us that God's promises outlast empires, armies, and our own doubts.",
+          "The cross was not a defeat — it was the greatest victory ever won.",
+        ],
+      },
+
+      /* -------- BETHLEHEM -------- */
+      {
+        name: "Bethlehem",
+        lat: 31.7054, lng: 35.2024,
+        icon: "⭐",
+        color: "#2980B9",
+        pulseColor: "rgba(41,128,185,0.35)",
+        story: "Bethlehem means 'House of Bread' — fittingly, it is the birthplace of the Bread of Life. Jesus was born here in a humble stable, fulfilling a prophecy spoken 700 years earlier. Shepherds heard angels announce the news, and wise men traveled from the east following a star.",
+        verse: "\"But you, Bethlehem Ephrathah, though you are small among the clans of Judah, out of you will come for me one who will be ruler over Israel.\"",
+        verseRef: "Micah 5:2 (NIV)",
+        extraVerses: [
+          { ref: "Luke 2:1–7",      text: "Mary and Joseph travel to Bethlehem. Jesus is born and laid in a manger." },
+          { ref: "Luke 2:8–20",     text: "Angels appear to shepherds in the fields, announcing the birth of the Savior." },
+          { ref: "Matthew 2:1–12",  text: "The Magi follow the star and find the Christ child in Bethlehem." },
+          { ref: "Ruth 1:19",       text: "Ruth and Naomi arrive in Bethlehem, setting the stage for the lineage of David and Jesus." },
+        ],
+        aiExplanations: [
+          "Bethlehem is a powerful reminder that God does His greatest work in the most humble, unexpected places. The King of the universe was born not in a palace, but in a stable — not in Rome or Jerusalem, but in a small, overlooked town. This is the upside-down kingdom: the first shall be last, and the greatest King arrives as a helpless baby. If you have ever felt too small to be used by God, look to Bethlehem. God specializes in using the ordinary to accomplish the extraordinary.",
+          "The prophecy about Bethlehem was spoken 700 years before Jesus was born. God planned the most important event in human history long before any of the people involved were alive. If God plans salvation with that kind of precision, He is equally attentive to the details of your life. You are not forgotten. Your future is not uncertain to Him. God is working out His plans for you with the same faithfulness He showed in Bethlehem.",
+          "Bethlehem teaches us about the gift of God's presence. 'Emmanuel' means 'God with us' — and it all started here. Jesus left the glory of heaven to enter our world, breathe our air, and feel our weakness. Whatever you are going through, you are not alone. The One born in a manger has walked through human struggle. He knows what it feels like — and He is with you right now.",
+        ],
+        quickTips: [
+          "God chose the smallest town for the biggest event. He can use you right where you are.",
+          "Bethlehem reminds us: the best gifts often come in the most unexpected packages.",
+          "God's plans are always on time — Bethlehem was prophesied 700 years in advance!",
+          "Like the shepherds, be willing to drop everything and run toward Jesus.",
+          "The manger had no room, but Jesus still made a way. He always makes a way.",
+        ],
+      },
+
+      /* -------- NAZARETH -------- */
+      {
+        name: "Nazareth",
+        lat: 32.7021, lng: 35.2978,
+        icon: "🏠",
+        color: "#27AE60",
+        pulseColor: "rgba(39,174,96,0.35)",
+        story: "Nazareth was Jesus' hometown, where He grew up from childhood to age 30. He lived an ordinary life as a carpenter's son. When He began to teach and perform miracles, locals struggled to believe. 'Can anything good come from Nazareth?' was the common skeptical refrain.",
+        verse: "\"And he went and lived in a city called Nazareth, so that what was spoken by the prophets might be fulfilled, that he would be called a Nazarene.\"",
+        verseRef: "Matthew 2:23 (ESV)",
+        extraVerses: [
+          { ref: "Luke 4:16–21",    text: "Jesus returns to Nazareth and reads from Isaiah, declaring the year of the Lord's favor." },
+          { ref: "Luke 4:22–30",    text: "The people of Nazareth are amazed but then try to throw Jesus off a cliff." },
+          { ref: "Luke 2:51–52",    text: "Jesus grows up in Nazareth, obedient to His parents, increasing in wisdom and stature." },
+          { ref: "John 1:45–46",    text: "Philip tells Nathanael about Jesus of Nazareth. Nathanael asks, 'Can anything good come from Nazareth?'" },
+        ],
+        aiExplanations: [
+          "Nazareth represents the hidden years — the quiet seasons of preparation God builds into every faithful life. Jesus spent 30 years in obscurity before 3 years of public ministry. He swept sawdust off a workshop floor, helped customers choose lumber, lived unremarkably. Yet none of those years were wasted — they were preparation. If you are in a hidden season right now, doing faithful work nobody notices, take heart. God is preparing you for something too. Your Nazareth is not your final destination.",
+          "The people of Nazareth struggled to see Jesus because they thought they already knew Him. Familiarity can be one of the greatest spiritual obstacles. Sometimes we need fresh eyes to see who God truly is. Have you grown so familiar with Jesus that you've stopped being amazed by Him? Nazareth invites you to encounter Him again as if for the first time — to hear His words not as routine, but as the life-changing truth they really are.",
+          "From Nazareth came the question: 'Can anything good come from here?' And the answer is: absolutely yes. God delights in confounding expectations. He raises leaders from small towns, calls fishermen to change the world, uses the most unlikely people for His greatest purposes. What 'Nazareth' in your own life have you been dismissing — what skill or background have you thought too ordinary? God sees it differently.",
+        ],
+        quickTips: [
+          "Your ordinary days are not wasted — Jesus spent 30 years in Nazareth before His ministry began.",
+          "Never despise a season of preparation. God is always at work in the quiet times.",
+          "When others underestimate you, remember: they said 'nothing good' comes from Nazareth.",
+          "Faithfulness in small things opens doors to bigger callings.",
+          "Your hometown does not define your destiny. Nazareth didn't define Jesus — and your past doesn't define you.",
+        ],
+      },
+
+      /* -------- MOUNT SINAI -------- */
+      {
+        name: "Mount Sinai",
+        lat: 28.5391, lng: 33.9750,
+        icon: "⚡",
+        color: "#E67E22",
+        pulseColor: "rgba(230,126,34,0.35)",
+        story: "Mount Sinai is where God revealed Himself to Moses in the burning bush, and where He gave Moses the Ten Commandments amid thunder, lightning, and a thick cloud. It was the mountain where heaven and earth touched, and where God established His covenant with Israel.",
+        verse: "\"Now Mount Sinai was wrapped in smoke because the LORD had descended on it in fire. The smoke of it went up like the smoke of a kiln, and the whole mountain trembled greatly.\"",
+        verseRef: "Exodus 19:18 (ESV)",
+        extraVerses: [
+          { ref: "Exodus 3:1–6",       text: "Moses encounters the burning bush — God reveals His name 'I AM' for the first time." },
+          { ref: "Exodus 20:1–17",     text: "God speaks the Ten Commandments to Moses on Mount Sinai." },
+          { ref: "1 Kings 19:11–13",   text: "Elijah hears God at Mount Horeb — not in wind, fire, or earthquake, but in a still small voice." },
+          { ref: "Galatians 4:24–25",  text: "Paul uses Mount Sinai as a symbol of the Old Covenant, pointing to the freedom of the New." },
+        ],
+        aiExplanations: [
+          "Mount Sinai is a place of encounter. When Moses stood before the burning bush, he was an 80-year-old shepherd who had spent 40 years in the wilderness. Yet God's plans were just beginning. The fire that burned without consuming the bush is a picture of God — holy and powerful, but not destructive to what He touches. He refines it. If you feel your best years are behind you, remember Moses at the burning bush. God's timing is never late.",
+          "The Ten Commandments were not a burden — they were a gift. God was saying: 'Here is how to live in freedom and wholeness.' The law reflected the character of a holy God who wanted His people to flourish. In the New Testament, Jesus fulfills the law — not abolishing it, but writing it on our hearts instead of stone. As you read the Ten Commandments, ask: which of these is speaking directly to an area of your life that needs realignment?",
+          "Elijah returned to Sinai exhausted and depressed after a great victory, running for his life. And God met him there — not in a dramatic earthquake or fire, but in a gentle whisper. God adjusts how He speaks to meet us where we are. Sometimes we look for God in spectacular moments and miss His voice in the quiet. Are you listening for the still, small voice today? He is speaking — even now, perhaps in a whisper you almost missed.",
+        ],
+        quickTips: [
+          "Moses was 80 when God called him at the burning bush. It's never too late for your story to begin.",
+          "God's voice at Sinai was thunderous AND a still small whisper — He speaks in every season.",
+          "The law at Sinai was given in love, not anger. God's commands are always for our good.",
+          "Like Moses, take off your shoes — you might be standing on holy ground right now.",
+          "God doesn't consume what He calls — He transforms it. Let His fire refine, not destroy.",
+        ],
+      },
+
+      /* -------- SEA OF GALILEE -------- */
+      {
+        name: "Sea of Galilee",
+        lat: 32.8328, lng: 35.6002,
+        icon: "🌊",
+        color: "#2471A3",
+        pulseColor: "rgba(36,113,163,0.35)",
+        story: "The Sea of Galilee was the backdrop for many of Jesus' most dramatic miracles. He calmed a violent storm, walked on water, called fishermen to be His disciples, and fed 5,000 people on its shores. The lake was the center of daily life for the disciples who were fishermen.",
+        verse: "\"He got up, rebuked the wind and said to the waves, 'Quiet! Be still!' Then the wind died down and it was completely calm.\"",
+        verseRef: "Mark 4:39 (NIV)",
+        extraVerses: [
+          { ref: "Matthew 4:18–22",  text: "Jesus calls Peter, Andrew, James, and John from their fishing boats to follow Him." },
+          { ref: "Matthew 14:25–31", text: "Jesus walks on water. Peter steps out in faith — and sinks when he takes his eyes off Jesus." },
+          { ref: "John 6:1–14",      text: "Jesus feeds 5,000 people with 5 loaves and 2 fish on the shore." },
+          { ref: "John 21:1–17",     text: "After the resurrection, Jesus appears to the disciples fishing and restores Peter." },
+        ],
+        aiExplanations: [
+          "The Sea of Galilee is where Jesus showed His authority over nature. The disciples were seasoned fishermen who knew this lake and its storms — and they were terrified. Yet with three words, 'Peace, be still,' Jesus silenced the chaos. What storms are raging in your life? Jesus does not always remove the storm instantly, but He is always in the boat with you. And He has authority over every wind and wave that threatens you.",
+          "Peter's walk on water is often misunderstood. We focus on his sinking, but let's not miss this: Peter was the only one who had enough faith to step out of the boat. And he DID walk on water — for a moment. Jesus didn't criticize him for sinking; He caught him and asked why he doubted. The lesson isn't 'don't sink.' It's 'keep your eyes on Jesus.' When you take risks of faith and start to sink, He reaches out His hand.",
+          "It was on these shores that Jesus restored Peter after his three-time denial. Three times Peter said 'I don't know him.' Three times Jesus asked, 'Do you love me?' — giving Peter three chances to replace denial with declaration. Whatever you have done, whatever you have denied, Jesus is asking you the same question today: 'Do you love me?' That is where restoration begins.",
+        ],
+        quickTips: [
+          "Jesus is in your boat during the storm. He may seem 'asleep' but He is never absent.",
+          "Even when you sink like Peter, Jesus reaches out His hand. Keep your eyes on Him.",
+          "The voice that said 'peace be still' to the sea speaks peace to your heart too.",
+          "Five loaves and two fish fed 5,000. Offer what you have; God multiplies what He receives.",
+          "The disciples asked 'Who is this?' after the storm was calmed. Keep asking — keep discovering Jesus.",
+        ],
+      },
+
+      /* -------- GARDEN OF GETHSEMANE -------- */
+      {
+        name: "Garden of Gethsemane",
+        lat: 31.7790, lng: 35.2395,
+        icon: "🌿",
+        color: "#1A6B3C",
+        pulseColor: "rgba(26,107,60,0.35)",
+        story: "Gethsemane, on the Mount of Olives just east of Jerusalem, is where Jesus prayed in agony before His crucifixion. While His disciples fell asleep, Jesus wrestled in prayer, sweating drops of blood, asking if the cup of suffering could pass — yet surrendering fully to the Father's will.",
+        verse: "\"Father, if you are willing, take this cup from me; yet not my will, but yours be done.\"",
+        verseRef: "Luke 22:42 (NIV)",
+        extraVerses: [
+          { ref: "Matthew 26:36–46", text: "Jesus asks His disciples to watch and pray with Him, but they fall asleep three times." },
+          { ref: "Luke 22:43–44",    text: "An angel appears to strengthen Jesus, and His sweat becomes like drops of blood." },
+          { ref: "John 18:1–11",     text: "Judas leads soldiers to Gethsemane. Jesus steps forward and says 'I am he' — and they fall backward." },
+          { ref: "Hebrews 5:7–9",    text: "Jesus learned obedience through suffering — His Gethsemane prayer was heard." },
+        ],
+        aiExplanations: [
+          "Gethsemane means 'oil press' — and that is exactly what happened to Jesus here. He was pressed. Crushed. And out of that crushing came the purest surrender: 'Not my will, but yours.' This is the most profound prayer in all of Scripture. Jesus fully felt the weight of what was coming and chose obedience anyway. When life presses you in ways that feel unbearable, Gethsemane reminds you that surrender to God is not weakness — it is the highest form of trust.",
+          "The disciples fell asleep while Jesus prayed. We think 'How could they?' — but we are not so different. When life gets hard and prayer feels heavy, the human tendency is to drift and find escape. Gethsemane invites you to stay awake in prayer even when it's hard. The most important conversations with God often happen in the darkest, loneliest nights. Don't fall asleep in your Gethsemane season. Press through.",
+          "There is something extraordinary hidden in Gethsemane: the prayer 'not my will, but yours' was answered by the resurrection. What Jesus surrendered — His very life — God returned to Him transformed and glorified. This is the pattern of the kingdom: what you surrender to God, He returns more fully than you imagined. Your Gethsemane is not the end of your story. It is the turning point. Trust the Father's plan, even through the dark.",
+        ],
+        quickTips: [
+          "'Not my will but yours' — five words that changed history. Try praying them today.",
+          "Jesus prayed alone in Gethsemane. He understands when you feel no one is watching.",
+          "The oil press produces oil only through pressure. Your hard seasons produce character.",
+          "Even Jesus needed an angel to strengthen Him. It's okay to ask God for strength.",
+          "What you surrender in Gethsemane, God can restore in resurrection. Don't be afraid to let go.",
+        ],
+      },
+
+      /* -------- JORDAN RIVER -------- */
+      {
+        name: "Jordan River",
+        lat: 31.8451, lng: 35.5516,
+        icon: "💧",
+        color: "#1ABC9C",
+        pulseColor: "rgba(26,188,156,0.35)",
+        story: "The Jordan River appears throughout the Bible as a place of crossing and new beginnings. Joshua led Israel across it into the Promised Land. John the Baptist preached and baptized here. Most significantly, Jesus was baptized in the Jordan — the heavens opened and the Father declared, 'This is my beloved Son.'",
+        verse: "\"And when Jesus was baptized, immediately he went up from the water, and behold, the heavens were opened to him, and he saw the Spirit of God descending like a dove.\"",
+        verseRef: "Matthew 3:16 (ESV)",
+        extraVerses: [
+          { ref: "Joshua 3:14–17",    text: "The priests carry the ark into the Jordan and the waters part — Israel enters the Promised Land." },
+          { ref: "2 Kings 5:9–14",    text: "Naaman dips in the Jordan seven times and is healed of leprosy." },
+          { ref: "Mark 1:4–8",        text: "John the Baptist preaches repentance and baptizes crowds in the Jordan." },
+          { ref: "Luke 3:21–22",      text: "Jesus is baptized; the Holy Spirit descends as a dove and the Father speaks from heaven." },
+        ],
+        aiExplanations: [
+          "The Jordan River is a threshold — a crossing point. Crossing the Jordan meant leaving the wilderness and entering the Promised Land. In your own life, God may be calling you to a Jordan moment — a step of faith that requires you to get your feet wet before you see the waters part. The priests had to walk to the river's edge before God stopped the flow. What step of faith is God asking you to take before He acts on your behalf?",
+          "Jesus had no sin to repent of — so why was He baptized? He identified completely with humanity. At His baptism, the Trinity was fully present: the Son in the water, the Spirit as a dove, and the Father speaking from heaven. This was His official commissioning before public ministry. Before significant work for God, consider the importance of being filled with His Spirit and having the Father's affirmation. Seek that first.",
+          "Naaman was a great commander who almost missed his healing because he was offended that the prophet told him to dip in an ordinary river seven times. He expected something grand. But the miracle was hidden in simple, humble obedience. Is God asking you to do something simple that your pride resists? The breakthrough may be on the other side of an uncomplicated act of trust — not a spectacular gesture, but a plain step of faith.",
+        ],
+        quickTips: [
+          "The Jordan crossing required wet feet before dry ground. Your miracle may need a step first.",
+          "Jesus' baptism shows God values public declaration of faith. Don't be ashamed of yours.",
+          "Naaman nearly missed his healing through pride. Humble obedience unlocks miracles.",
+          "Every Jordan River in your life is an invitation to leave the wilderness behind.",
+          "The Father declared 'You are my beloved' over Jesus. He says the same over you today.",
+        ],
+      },
+
+      /* -------- MOUNT OF OLIVES -------- */
+      {
+        name: "Mount of Olives",
+        lat: 31.7784, lng: 35.2460,
+        icon: "🌄",
+        color: "#8E44AD",
+        pulseColor: "rgba(142,68,173,0.35)",
+        story: "The Mount of Olives overlooks Jerusalem from the east. Jesus delivered His Olivet Discourse here — prophecies about the end times. He wept over Jerusalem from this mountain. He ascended to heaven from its slopes. And according to prophecy, He will return and stand here when He comes again.",
+        verse: "\"When he came near the place where the road goes down the Mount of Olives, the whole crowd of disciples began joyfully to praise God in loud voices for all the miracles they had seen.\"",
+        verseRef: "Luke 19:37 (NIV)",
+        extraVerses: [
+          { ref: "Luke 19:41–44",   text: "Jesus weeps over Jerusalem from the Mount of Olives, mourning those who would not receive Him." },
+          { ref: "Matthew 24:1–3",  text: "Jesus sits on the Mount of Olives and delivers the Olivet Discourse about the end of the age." },
+          { ref: "Acts 1:9–12",     text: "Jesus ascends to heaven from the Mount of Olives as the disciples watch." },
+          { ref: "Zechariah 14:4",  text: "Prophecy: The LORD will stand on the Mount of Olives on the day of His return." },
+        ],
+        aiExplanations: [
+          "Jesus wept over Jerusalem from the Mount of Olives. He could see both the physical city and the spiritual state of its people — and He grieved. This tells us something profound: God is not distant or indifferent to human hardship and rejection. He weeps. He cares. The tears of Jesus on the Mount of Olives are proof that your pain moves God's heart. He does not watch suffering with cold detachment. He weeps with you — and then He acts.",
+          "The Ascension was not abandonment — it was promotion. Jesus went up so that the Holy Spirit could come down. His physical absence made room for His universal presence through the Spirit. When it feels like God has 'gone away' — when the sky seems silent and prayer feels distant — remember: this may be a season where He is preparing to send His Spirit in a new way. Seasons of perceived absence often precede seasons of profound encounter.",
+          "The prophecy that Jesus will return to the Mount of Olives gives Christians a horizon of hope. History is not spinning out of control — it is moving toward a destination. The one who wept on this mountain, who ascended from it, will one day return to it. This future hope is not a distraction from the present — it is fuel for it. When you know where the story is going, you can face today's difficulties with courage.",
+        ],
+        quickTips: [
+          "Jesus wept over Jerusalem — He sees your city, your struggles, and He cares deeply.",
+          "The Ascension wasn't goodbye — it was 'I'll send someone even better.' The Spirit is here.",
+          "Jesus chose to go forward from the Mount of Olives, knowing the road ahead. So can you.",
+          "Prophecy from the Mount of Olives reminds us: history has a destination. You are part of the story.",
+          "Jesus went up so the Spirit could come down. Sometimes God takes things away to give something better.",
+        ],
+      },
+
+      /* -------- CAPERNAUM -------- */
+      {
+        name: "Capernaum",
+        lat: 32.8812, lng: 35.5754,
+        icon: "🐟",
+        color: "#D35400",
+        pulseColor: "rgba(211,84,0,0.35)",
+        story: "Capernaum was Jesus' home base during His Galilean ministry. From this fishing village He taught in the synagogue, healed many (including Peter's mother-in-law), and performed the miracle of the paralyzed man lowered through the roof by four determined friends.",
+        verse: "\"And when Jesus returned to Capernaum after some days, it was reported that he was at home. And many were gathered together, so that there was no more room, not even at the door.\"",
+        verseRef: "Mark 2:1–2 (ESV)",
+        extraVerses: [
+          { ref: "Mark 2:1–12",    text: "Four men lower a paralyzed friend through the roof to reach Jesus — who heals him." },
+          { ref: "Mark 1:21–28",   text: "Jesus teaches in the Capernaum synagogue with authority and casts out an unclean spirit." },
+          { ref: "Luke 7:1–10",    text: "A Roman centurion shows remarkable faith — and Jesus heals his servant from a distance." },
+          { ref: "John 6:35–59",   text: "Jesus delivers the 'Bread of Life' discourse in the Capernaum synagogue." },
+        ],
+        aiExplanations: [
+          "Four men carried their paralyzed friend to Jesus in Capernaum — and when the crowd blocked the door, they climbed to the roof and dug through it. This is radical, creative, persistent intercession. They were not deterred by obstacles. They found another way. When you are praying for someone who needs healing, be like these four friends. Don't give up because the door seems blocked. Find the roof. God honors persistent, creative, loving faith.",
+          "Capernaum became Jesus' base, which means ordinary people of this fishing town became His everyday neighbors. Jesus sat with them, ate their food, healed their sick, and walked their streets. The Kingdom of God was not launched from a palace — it was launched from a modest fishing village. God is deeply comfortable in ordinary spaces — in your home, your workplace, your neighborhood. Where have you invited Him today?",
+          "The centurion in Capernaum said: 'Just say the word, and my servant will be healed.' He understood authority. He didn't need Jesus to come physically — he knew Jesus' word alone was enough. Jesus described this as greater faith than He had found in all Israel. You don't need the right feelings or perfect circumstances for God to work. Simply trust the authority of His word. What He has promised, He will perform.",
+        ],
+        quickTips: [
+          "The four friends found the roof when the door was blocked. Don't stop at obstacles in prayer.",
+          "Jesus was comfortable in a fishing village. He is equally at home in the ordinary spaces of your life.",
+          "The centurion understood authority. Learn to trust the word of Jesus over what you can see.",
+          "Capernaum was a center of miracles — but they all started when Jesus was welcomed in.",
+          "When you can't carry your own burdens, let trusted friends carry you to Jesus.",
+        ],
+      },
+
+      /* -------- JERICHO -------- */
+      {
+        name: "Jericho",
+        lat: 31.8719, lng: 35.4608,
+        icon: "🏰",
+        color: "#B7950B",
+        pulseColor: "rgba(183,149,11,0.35)",
+        story: "Jericho is one of the world's oldest cities. Its walls famously fell when the Israelites marched around them for seven days and shouted — no weapons raised. In the New Testament, Jesus healed blind Bartimaeus near Jericho and met Zacchaeus, a tax collector who climbed a tree just to catch a glimpse of Him.",
+        verse: "\"By faith the walls of Jericho fell down after they had been encircled for seven days.\"",
+        verseRef: "Hebrews 11:30 (ESV)",
+        extraVerses: [
+          { ref: "Joshua 6:1–21",  text: "The Israelites march around Jericho seven times on the seventh day, shout — and the walls fall." },
+          { ref: "Mark 10:46–52",  text: "Blind Bartimaeus cries out to Jesus. Told to be quiet, he shouts louder — and is healed." },
+          { ref: "Luke 19:1–10",   text: "Zacchaeus climbs a sycamore tree. Jesus calls him by name and visits his house." },
+          { ref: "Luke 10:30–37",  text: "The parable of the Good Samaritan takes place on the road from Jerusalem to Jericho." },
+        ],
+        aiExplanations: [
+          "The walls of Jericho fell not through military strength, but through obedient worship. God's instruction seemed absurd — march in silence for six days, then shout. It made no military sense. But the Israelites obeyed, and the impossible happened. Sometimes God calls you to things that seem illogical. But the strategy of heaven is not always visible from earth. Trust the instruction, do the next thing God has told you, and let Him bring the walls down.",
+          "Blind Bartimaeus refused to be silenced. The crowd told him to be quiet when he called out to Jesus — he shouted louder. And Jesus stopped. In all of Jericho, with all its noise, Jesus heard one persistent, desperate voice. If you feel like your prayers are disappearing into the crowd, shout louder — not in volume, but in sincerity and persistence. Don't let doubt or discouragement silence your cry. Jesus stops for the persistent ones.",
+          "Zacchaeus climbed a tree because he was too short to see over the crowd — and Jesus called him down by name. Zacchaeus was despised, excluded, written off. He didn't expect to be personally addressed — he just wanted a glimpse. But Jesus saw him, knew his name, and chose to come to his house. God sees the people others overlook. If you have ever felt too small or too far in the back, look up. Jesus is calling your name.",
+        ],
+        quickTips: [
+          "The walls of Jericho fell through worship, not warfare. Praise is a powerful weapon.",
+          "Bartimaeus shouted louder when told to be quiet. Don't let discouragement silence your prayers.",
+          "Zacchaeus was too small to see, but Jesus saw him first. You are never invisible to God.",
+          "Seven laps around Jericho must have felt foolish. Obedience that looks foolish often leads to breakthroughs.",
+          "The road to Jericho is where the Good Samaritan showed love. Who needs your love today?",
+        ],
+      },
+
+    ]; /* end LOCATIONS array */
+
+
+    /* ================================================================
+       2. DARK MODE TOGGLE
+       ----------------------------------------------------------------
+       We check localStorage for a saved preference, then fall back
+       to the OS/browser's color scheme preference.
+    ================================================================ */
+    const darkModeBtn = document.getElementById("darkModeToggle");
+
+    /**
+     * applyDarkMode(isDark)
+     * Adds or removes the .dark-mode class on <body>, updates the
+     * button label, and saves the preference to localStorage.
+     */
+    function applyDarkMode(isDark) {
+      document.body.classList.toggle("dark-mode", isDark);
+      darkModeBtn.textContent = isDark ? "☀️ Light Mode" : "🌙 Dark Mode";
+    }
+
+    /* Read saved preference from localStorage, or detect from OS */
+    const savedDark = localStorage.getItem("bibleMapDarkMode");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyDarkMode(savedDark === "true" || (savedDark === null && prefersDark));
+
+    /* Toggle when the button is clicked */
+    darkModeBtn.addEventListener("click", () => {
+      const isNowDark = !document.body.classList.contains("dark-mode");
+      applyDarkMode(isNowDark);
+      localStorage.setItem("bibleMapDarkMode", String(isNowDark));
+    });
+
+
+    /* ================================================================
+       3. MAP INITIALIZATION (LEAFLET)
+       ----------------------------------------------------------------
+       L is the global object exposed by the Leaflet library.
+       setView([lat, lng], zoom) — centers the map; zoom 7 shows all
+       of Israel and the surrounding region.
+    ================================================================ */
+    const map = L.map("map").setView([31.5, 35.0], 7);
+
+    /* Tile layer: the actual map imagery from OpenStreetMap */
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 18,
+    }).addTo(map);
+
+
+    /* ================================================================
+       4. CUSTOM ANIMATED MARKER CREATOR
+       ----------------------------------------------------------------
+       Creates a Leaflet DivIcon (a marker made from HTML/CSS).
+       Each pin is a teardrop shape with a floating animation and
+       a pulsing ring below it.
+    ================================================================ */
+
+    /**
+     * createCustomIcon(color, pulseColor)
+     * @param {string} color      — pin background color
+     * @param {string} pulseColor — ripple ring color (rgba)
+     * @returns {L.DivIcon}
+     */
+    function createCustomIcon(color, pulseColor) {
+      const html = `
+        <div class="bible-marker-container">
+          <div class="bible-marker-pin" style="background-color:${color}">
+            <div class="bible-marker-dot"></div>
+          </div>
+          <div class="bible-marker-pulse" style="background-color:${pulseColor}"></div>
+        </div>`;
+
+      return L.divIcon({
+        html,
+        className: "",          /* clear Leaflet's default styles */
+        iconSize:   [40, 50],
+        iconAnchor: [20, 48],   /* tip of the pin = the map point */
+        popupAnchor:[0, -48],   /* popup appears above the tip    */
+      });
+    }
+
+
+    /* ================================================================
+       5. MARKER & POPUP SETUP
+       ----------------------------------------------------------------
+       Loop through LOCATIONS, create a marker + popup for each,
+       and attach a click handler to open the info panel.
+    ================================================================ */
+
+    /* markerMap lets us look up a marker by location name (for search) */
+    const markerMap = {};
+
+    LOCATIONS.forEach((loc) => {
+      const icon   = createCustomIcon(loc.color, loc.pulseColor);
+      const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
+
+      /* Brief popup (quick glance before the panel opens) */
+      const popupHtml = `
+        <div>
+          <div class="popup-title">${loc.icon} ${loc.name}</div>
+          <div class="popup-sub">${loc.story.substring(0, 90)}…</div>
+          <div class="popup-hint">Click for full story &amp; devotional →</div>
+        </div>`;
+
+      marker.bindPopup(popupHtml, { maxWidth: 260 });
+
+      /* Open the info panel on click */
+      marker.on("click", () => {
+        openLocationPanel(loc);
+        marker.openPopup();
+      });
+
+      markerMap[loc.name] = marker;
+    });
+
+
+    /* ================================================================
+       6. INFO PANEL LOGIC
+       ----------------------------------------------------------------
+       openLocationPanel(loc) fills the right sidebar with data for
+       the clicked location and triggers the AI devotional animation.
+    ================================================================ */
+
+    /* Panel & card DOM references */
+    const infoPanel       = document.getElementById("infoPanel");
+    const defaultMessage  = document.getElementById("defaultMessage");
+    const locationCard    = document.getElementById("locationCard");
+    const closePanel      = document.getElementById("closePanel");
+
+    /* Card content field references */
+    const locationIcon    = document.getElementById("locationIcon");
+    const locationName    = document.getElementById("locationName");
+    const locationStory   = document.getElementById("locationStory");
+    const locationVerse   = document.getElementById("locationVerse");
+    const locationVerseRef = document.getElementById("locationVerseRef");
+    const extraVersesList = document.getElementById("extraVerses");
+    const aiLoading       = document.getElementById("aiLoading");
+    const aiExplanation   = document.getElementById("aiExplanation");
+
+    let currentLocation = null;   /* tracks which location is selected */
+    let lastAiIndex     = -1;    /* avoids repeating the same AI text  */
+
+    /**
+     * openLocationPanel(loc)
+     * Expands the panel and fills it with this location's content.
+     */
+    function openLocationPanel(loc) {
+      currentLocation = loc;
+
+      /* Expand the panel (CSS transition handles animation) */
+      infoPanel.classList.add("panel-open");
+
+      /* Swap default message for the location card */
+      defaultMessage.classList.add("hidden");
+      locationCard.classList.remove("hidden");
+
+      /* Populate content fields */
+      locationIcon.textContent      = loc.icon;
+      locationName.textContent      = loc.name;
+      locationStory.textContent     = loc.story;
+      locationVerse.textContent     = loc.verse;
+      locationVerseRef.textContent  = loc.verseRef;
+
+      /* Build the extra verses list */
+      extraVersesList.innerHTML = "";
+      loc.extraVerses.forEach(({ ref, text }) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="ev-ref">${ref}</span><span>${text}</span>`;
+        extraVersesList.appendChild(li);
+      });
+
+      showRandomTip(loc);
+      startAiGeneration(loc);
+    }
+
+    /**
+     * startAiGeneration(loc)
+     * Shows a loading spinner for ~1.5 s, then fades in a pre-written
+     * AI devotional paragraph (simulates real AI generation).
+     */
+    function startAiGeneration(loc) {
+      /* Reset */
+      aiExplanation.textContent = "";
+      aiLoading.classList.remove("hidden");
+      aiExplanation.classList.add("hidden");
+
+      /* Pick a random explanation (avoid immediate repeats) */
+      let idx;
+      do {
+        idx = Math.floor(Math.random() * loc.aiExplanations.length);
+      } while (idx === lastAiIndex && loc.aiExplanations.length > 1);
+      lastAiIndex = idx;
+
+      /* Simulate AI "thinking" delay (1.2 – 2 seconds) */
+      setTimeout(() => {
+        aiLoading.classList.add("hidden");
+        aiExplanation.textContent = loc.aiExplanations[idx];
+        aiExplanation.classList.remove("hidden");
+
+        /* Re-trigger fade-in animation */
+        aiExplanation.style.animation = "none";
+        void aiExplanation.offsetHeight;   /* flush style */
+        aiExplanation.style.animation = "";
+      }, 1200 + Math.random() * 800);
+    }
+
+    /* Close button: collapse the panel and restore the default message */
+    closePanel.addEventListener("click", () => {
+      infoPanel.classList.remove("panel-open");
+      currentLocation = null;
+
+      /* Wait for the collapse animation before switching content */
+      setTimeout(() => {
+        locationCard.classList.add("hidden");
+        defaultMessage.classList.remove("hidden");
+      }, 350);
+
+      map.closePopup();
+    });
+
+
+    /* ================================================================
+       7. QUICK TIP LOGIC
+       ----------------------------------------------------------------
+       Each location has an array of quickTips. showRandomTip picks
+       one at random (avoiding the previous tip). The "New Tip" button
+       cycles through them without repeating immediately.
+    ================================================================ */
+    const quickTipText = document.getElementById("quickTip");
+    const newTipBtn    = document.getElementById("newTipBtn");
+    let lastTipIndex   = -1;
+
+    function showRandomTip(loc) {
+      const target = loc || currentLocation;
+      if (!target) return;
+
+      let tipIdx;
+      do {
+        tipIdx = Math.floor(Math.random() * target.quickTips.length);
+      } while (tipIdx === lastTipIndex && target.quickTips.length > 1);
+      lastTipIndex = tipIdx;
+
+      /* Fade out, swap text, fade in */
+      quickTipText.style.transition = "opacity 0.2s ease";
+      quickTipText.style.opacity    = "0";
+      setTimeout(() => {
+        quickTipText.textContent   = target.quickTips[tipIdx];
+        quickTipText.style.opacity = "1";
+      }, 200);
+    }
+
+    newTipBtn.addEventListener("click", () => showRandomTip(null));
+
+
+    /* ================================================================
+       8. SEARCH BAR LOGIC
+       ----------------------------------------------------------------
+       As the user types, filter LOCATIONS by name (partial match,
+       case-insensitive). Display results in a dropdown. Clicking a
+       result pans the map to that location and opens its panel.
+    ================================================================ */
+    const searchInput   = document.getElementById("searchInput");
+    const searchResults = document.getElementById("searchResults");
+
+    /* Render a list of matching locations in the dropdown */
+    function renderSearchResults(matches) {
+      searchResults.innerHTML = "";
+
+      if (matches.length === 0) {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="result-icon">🔍</span><div><div class="result-name">No locations found</div><div class="result-sub">Try a different name</div></div>`;
+        li.style.cursor = "default";
+        searchResults.appendChild(li);
+      } else {
+        matches.forEach((loc) => {
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <span class="result-icon">${loc.icon}</span>
+            <div>
+              <div class="result-name">${loc.name}</div>
+              <div class="result-sub">${loc.story.substring(0, 60)}…</div>
+            </div>`;
+
+          li.addEventListener("click", () => {
+            searchInput.value           = "";
+            searchResults.style.display = "none";
+
+            /* Smoothly fly the map to this location */
+            map.flyTo([loc.lat, loc.lng], 12, { animate: true, duration: 1.5 });
+
+            /* Open the popup after the fly animation */
+            if (markerMap[loc.name]) {
+              setTimeout(() => markerMap[loc.name].openPopup(), 1500);
+            }
+
+            openLocationPanel(loc);
+          });
+
+          searchResults.appendChild(li);
+        });
+      }
+
+      searchResults.style.display = "block";
+    }
+
+    /* Filter on every keystroke */
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) { searchResults.style.display = "none"; return; }
+
+      const matches = LOCATIONS.filter((loc) =>
+        loc.name.toLowerCase().includes(q)
+      );
+      renderSearchResults(matches);
+    });
+
+    /* Close dropdown when clicking outside */
+    document.addEventListener("click", (e) => {
+      if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+        searchResults.style.display = "none";
+      }
+    });
+
+    /* Escape key closes the dropdown */
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { searchResults.style.display = "none"; searchInput.blur(); }
+    });
+
+    /* Start with the dropdown hidden */
+    searchResults.style.display = "none";
+
+    /* Friendly confirmation in the browser's developer console */
+    console.log(
+      "%c✦ AI Bible Map loaded! Click any marker to explore. ✦",
+      "color:#C9A84C;font-size:14px;font-weight:bold;padding:4px;"
+    );
+
+  </script>
+</body>
+</html>
